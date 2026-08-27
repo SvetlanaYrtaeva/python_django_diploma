@@ -1,107 +1,202 @@
-var mix = {
-    methods: {
-        setTag (id) {
-            this.topTags = this.topTags.map(tag => {
-                return  tag.id === id
-                    ? {
-                        ...tag,
-                        selected: !tag.selected
-                    }
-                    : tag
-            })
-            this.getCatalogs()
-        },
-        setSort (id) {
-            if (this.selectedSort?.id === id) {
-                this.selectedSort.selected =
-                    this.selectedSort.selected === 'dec'
-                        ? 'inc'
-                        : 'dec'
-            } else {
-                if (this.selectedSort) {
-                    this.selectedSort = null
-                }
-                this.selectedSort = this.sortRules.find(sort => sort.id === id)
-                this.selectedSort = {
-                    ...this.selectedSort,
-                    selected: 'dec'
-                }
-            }
-            this.getCatalogs()
-        },
-        getTags() {
-            this.getData('/api/tags', { category: this.category })
-                .then(data => this.topTags = data.map(tag => ({
-                    ...tag,
-                    selected: false
-                })))
-                .catch(() => {
-                        this.topTags = []
-                        console.warn('Ошибка получения тегов')
-                })
-        },
-        getCatalogs(page = 1) {
-            const PAGE_LIMIT = 20
-            const tags = this.topTags.filter(tag => !!tag.selected).map(tag => tag.id)
-            const min = document.querySelector('input[name=minPrice]').value
-            const max =  document.querySelector('input[name=maxPrice]').value
+function getArray(response) {
+    if (Array.isArray(response)) {
+        return response;
+    }
 
-            if (min !== 0) {
-                this.filter.minPrice = min
-            }
-            if (max !== 50000) {
-                this.filter.maxPrice = max
-            }
-            this.getData("/api/catalog", {
-                filter: {
-                    ...this.filter,
-                    minPrice: min,
-                    maxPrice: max
-                },
-                currentPage: page,
-                category: this.category,
-                sort: this.selectedSort ? this.selectedSort.id : null,
-                sortType: this.selectedSort ? this.selectedSort.selected : null,
-                tags,
-                limit: PAGE_LIMIT
-            })
-                .then(data => {
-                    this.catalogCards = data.items
-                    this.currentPage = data.currentPage
-                    this.lastPage = data.lastPage
+    if (
+        response
+        && Array.isArray(response.items)
+    ) {
+        return response.items;
+    }
 
-                }).catch(() => {
-                    console.warn('Ошибка при получении каталога')
-                })
-        }
-    },
-    mounted() {
-        this.selectedSort = this.sortRules?.[1]
-            ? { ...this.sortRules?.[1], selected: 'inc' }
-            :  null
+    if (
+        response
+        && Array.isArray(response.results)
+    ) {
+        return response.results;
+    }
 
-        if(location.pathname.startsWith('/catalog/')) {
-            const category = location.pathname.replace('/catalog/', '').replace('/', '')
-            this.category = category.length ? Number(category) : null
-        }
+    if (
+        response
+        && Array.isArray(response.products)
+    ) {
+        return response.products;
+    }
 
-        this.getCatalogs()
-        this.getTags()
-    },
+    return [];
+}
+
+
+function normalizeProduct(product) {
+    const image = product.image || {};
+
+    return {
+        ...product,
+
+        id: Number(
+            product.id,
+        ),
+
+        title: (
+            product.title
+            || product.name
+            || ""
+        ),
+
+        name: (
+            product.name
+            || product.title
+            || ""
+        ),
+
+        slug: product.slug || "",
+
+        imageSrc: (
+            image.src
+            || ""
+        ),
+
+        imageAlt: (
+            image.alt
+            || product.title
+            || product.name
+            || ""
+        ),
+
+        price: Number(
+            product.price
+            || 0,
+        ),
+
+        oldPrice: Number(
+            product.old_price
+            || 0,
+        ),
+
+        url: (
+            product.url
+            || `/product/${product.slug}/`
+        ),
+    };
+}
+
+
+function catalogParams(app) {
+    return {
+        "filter[name]": app.filters.name || "",
+
+        "filter[minPrice]": (
+            app.filters.price.currentFromValue
+            ?? app.filters.minPrice
+            ?? 0
+        ),
+
+        "filter[maxPrice]": (
+            app.filters.price.currentToValue
+            ?? app.filters.maxPrice
+            ?? 500000
+        ),
+
+        "filter[freeDelivery]": Boolean(
+            app.filters.freeDelivery,
+        ),
+
+        "filter[available]": Boolean(
+            app.filters.available,
+        ),
+
+        currentPage: Number(
+            app.currentPage || 1,
+        ),
+
+        sort: app.selectedSort
+            || "price",
+
+        sortType: app.sortType
+            || "inc",
+
+        limit: Number(
+            app.limit || 20,
+        ),
+    };
+}
+
+
+const catalogMixin = {
     data() {
         return {
-            category: null,
-            catalogCards: [],
-            currentPage: null,
-            lastPage: 1,
-            selectedSort: null,
-            filter: {
-                name: '',
-                minPrice: 0,
-                maxPrice: 50000,
-                freeDelivery: false,
-                available: true
-            }
-        }
-    }
-}
+            catalogFromServer: [],
+            currentPage: 1,
+            total: 0,
+            limit: 20,
+            selectedSort: "price",
+            sortType: "inc",
+        };
+    },
+
+    methods: {
+        getCatalog() {
+            this.getData(
+                "/api/catalog",
+                catalogParams(this),
+            ).then((response) => {
+                const products = getArray(
+                    response,
+                );
+
+                console.log(
+                    "Ответ API:",
+                    response,
+                );
+
+                console.log(
+                    "Массив после getArray:",
+                    products,
+                );
+
+                this.catalogFromServer = products.map(
+                    (product) => normalizeProduct(
+                        product,
+                    ),
+                );
+
+                console.log(
+                    "Товары после нормализации:",
+                    this.catalogFromServer,
+                );
+
+                this.total = Number(
+                    response.total
+                    ?? response.count
+                    ?? this.catalogFromServer.length,
+                );
+
+                this.currentPage = Number(
+                    response.currentPage
+                    || 1,
+                );
+
+                this.limit = Number(
+                    response.limit
+                    || 20,
+                );
+            }).catch((error) => {
+                console.warn(
+                    "Ошибка получения каталога:",
+                    error,
+                );
+
+                this.catalogFromServer = [];
+                this.total = 0;
+            });
+        },
+    },
+
+    mounted() {
+        this.getCatalog();
+    },
+};
+
+
+window.catalogMixin = catalogMixin;
