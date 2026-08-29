@@ -1,50 +1,49 @@
-var mix = {
-    methods: {
-        signIn() {
-            const username = document.querySelector(
-                "#login",
-            ).value.trim();
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('signInForm');
 
-            const password = document.querySelector(
-                "#password",
-            ).value;
+    if (!form) return;
 
-            if (
-                !username
-                || !password
-            ) {
-                alert(
-                    "Введите логин и пароль.",
-                );
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
 
-                return;
-            }
+        const username = document.getElementById('login')?.value;
+        const password = document.getElementById('password')?.value;
 
-            this.postData(
-                "/api/sign-in",
+        console.log('Sign in attempt:', { username });
+
+        if (!username || !password) {
+            alert('Введите логин и пароль');
+            return;
+        }
+
+        try {
+            const csrftoken = document.cookie.split('; ')
+                .find(row => row.startsWith('csrftoken='))?.split('=')[1];
+
+            const response = await axios.post('/api/sign-in',
+                { username, password },
                 {
-                    username,
-                    password,
-                },
-            ).then(() => {
-                location.assign("/");
-            }).catch((error) => {
-                const message = (
-                    error.response
-                    && error.response.data
-                    && error.response.data.detail
-                )
-                    ? error.response.data.detail
-                    : "Ошибка авторизации.";
+                    headers: {
+                        'X-CSRFToken': csrftoken,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
 
-                alert(message);
-            });
-        },
-    },
+            console.log('Response status:', response.status);
 
-    mounted() {},
+            if (response.status === 200) {
+                window.location.href = '/';
+            }
+        } catch (error) {
+            console.error('Sign in error:', error);
 
-    data() {
-        return {};
-    },
-};
+            if (error.response) {
+                const data = error.response.data;
+                alert(data.detail || 'Ошибка авторизации!');
+            } else {
+                alert('Ошибка авторизации!');
+            }
+        }
+    });
+});
