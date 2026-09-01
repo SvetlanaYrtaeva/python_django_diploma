@@ -71,6 +71,11 @@ def serialize_category(category):
 
 
 def serialize_product(product):
+    image = image_data(
+        product.image,
+        product.name,
+    )
+
     return {
         "id": product.id,
         "title": product.name,
@@ -84,10 +89,8 @@ def serialize_product(product):
             if product.old_price is not None
             else None
         ),
-        "image": image_data(
-            product.image,
-            product.name,
-        ),
+        "images": [image],
+        "image": image,
         "category": {
             "id": product.category.id,
             "title": product.category.name,
@@ -430,6 +433,8 @@ def catalog_api_view(request):
         for product in page_products
     ]
 
+    last_page = (total + limit - 1) // limit if limit > 0 else 1
+
     return json_response(
         {
             "items": data,
@@ -438,6 +443,7 @@ def catalog_api_view(request):
             "count": total,
             "total": total,
             "currentPage": current_page,
+            "lastPage": last_page,
             "limit": limit,
         },
     )

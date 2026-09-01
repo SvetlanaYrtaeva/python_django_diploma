@@ -43,21 +43,21 @@ var mix = {
         getCatalogs(page = 1) {
             const PAGE_LIMIT = 20
             const tags = this.topTags.filter(tag => !!tag.selected).map(tag => tag.id)
-            const minInput = document.querySelector('input[name=minPrice]')
-            const maxInput = document.querySelector('input[name=maxPrice]')
-            const min = minInput ? minInput.value : 0
-            const max = maxInput ? maxInput.value : 50000
+            const min = document.querySelector('input[name=minPrice]').value
+            const max =  document.querySelector('input[name=maxPrice]').value
 
-            const filterData = {
-                name: '',
-                minPrice: min,
-                maxPrice: max,
-                freeDelivery: false,
-                available: true
+            if (min !== 0) {
+                this.filter.minPrice = min
             }
-
+            if (max !== 50000) {
+                this.filter.maxPrice = max
+            }
             this.getData("/api/catalog", {
-                filter: filterData,
+                filter: {
+                    ...this.filter,
+                    minPrice: min,
+                    maxPrice: max
+                },
                 currentPage: page,
                 category: this.category,
                 sort: this.selectedSort ? this.selectedSort.id : null,
@@ -66,15 +66,12 @@ var mix = {
                 limit: PAGE_LIMIT
             })
                 .then(data => {
-                    console.log('Catalog API response:', data);
-                    this.catalogCards = data.items || data.products || data.results || []
-                    this.currentPage = data.currentPage || 1
-                    this.lastPage = Math.ceil((data.total || data.count || 0) / PAGE_LIMIT)
-                    console.log('Loaded products:', this.catalogCards.length);
-                })
-                .catch((error) => {
-                    console.error('Ошибка при получении каталога:', error);
-                    this.catalogCards = [];
+                    this.catalogCards = data.items
+                    this.currentPage = data.currentPage
+                    this.lastPage = data.lastPage
+
+                }).catch(() => {
+                    console.warn('Ошибка при получении каталога')
                 })
         }
     },

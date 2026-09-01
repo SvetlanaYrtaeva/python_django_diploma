@@ -17,77 +17,19 @@ from users.views import (
 
 
 urlpatterns = [
-    path(
-        "admin/",
-        admin.site.urls,
-    ),
-
-    path(
-        "",
-        include("catalog.urls"),
-    ),
-
-    path(
-        "users/",
-        include("users.urls"),
-    ),
-
-    path(
-        "profile",
-        profile_view,
-        name="profile_page",
-    ),
-
-    path(
-        "sign-in",
-        UserLoginView.as_view(),
-        name="sign_in_page",
-    ),
-
-    path(
-        "sign-up",
-        register_view,
-        name="sign_up_page",
-    ),
-
-    path(
-        "cart/",
-        include("cart.urls"),
-    ),
-
-    path(
-        "orders/",
-        include("orders.urls"),
-    ),
-
-    path(
-        "reviews/",
-        include("reviews.urls"),
-    ),
-
-    path(
-        "api/basket",
-        basket_api_view,
-        name="api_basket",
-    ),
-
-    path(
-        "api/sign-in",
-        sign_in_api_view,
-        name="api_sign_in",
-    ),
-
-    path(
-        "api/sign-out",
-        sign_out_api_view,
-        name="api_sign_out",
-    ),
-
-    path(
-        "api/sign-up",
-        sign_up_api_view,
-        name="api_sign_up",
-    ),
+    path("admin/", admin.site.urls),
+    path("", include("catalog.urls")),
+    path("users/", include("users.urls")),
+    path("profile/", profile_view, name="profile_page"),  # ← Добавьте слэш
+    path("sign-in/", UserLoginView.as_view(), name="sign_in_page"),  # ← sls
+    path("sign-up/", register_view, name="sign_up_page"),  # ← sls
+    path("cart/", include("cart.urls")),
+    path("orders/", include("orders.urls")),
+    path("reviews/", include("reviews.urls")),
+    path("api/basket", basket_api_view, name="api_basket"),
+    path("api/sign-in", sign_in_api_view, name="api_sign_in"),
+    path("api/sign-out", sign_out_api_view, name="api_sign_out"),
+    path("api/sign-up", sign_up_api_view, name="api_sign_up"),
 ]
 
 
