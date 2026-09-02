@@ -1,16 +1,11 @@
-from pathlib import Path
 import os
-
+from pathlib import Path
 from dotenv import load_dotenv
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-PROJECT_ROOT = BASE_DIR.parent
-FRONTEND_ROOT = PROJECT_ROOT / "diploma-frontend" / "frontend"
+FRONTEND_ROOT = BASE_DIR.parent / "diploma-frontend"
 
 load_dotenv(BASE_DIR / ".env")
-
 
 SECRET_KEY = os.getenv(
     "SECRET_KEY",
@@ -28,7 +23,6 @@ ALLOWED_HOSTS = [
     if host.strip()
 ]
 
-
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -36,14 +30,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-
+    "rest_framework",
     "users",
     "catalog",
     "cart",
     "orders",
     "reviews",
+    "frontend",
 ]
-
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -55,9 +49,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-
 ROOT_URLCONF = "config.urls"
-
 
 TEMPLATES = [
     {
@@ -77,11 +69,6 @@ TEMPLATES = [
     },
 ]
 
-
-WSGI_APPLICATION = "config.wsgi.application"
-ASGI_APPLICATION = "config.asgi.application"
-
-
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
@@ -89,70 +76,35 @@ DATABASES = {
     }
 }
 
-
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "UserAttributeSimilarityValidator"
-        ),
-    },
-    {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "MinimumLengthValidator"
-        ),
-    },
-    {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "CommonPasswordValidator"
-        ),
-    },
-    {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "NumericPasswordValidator"
-        ),
-    },
-]
-
-
-LANGUAGE_CODE = "ru-ru"
-TIME_ZONE = "Europe/Moscow"
-USE_I18N = True
-USE_TZ = True
-
-
 STATIC_URL = "/static/"
-
-STATICFILES_DIRS = [
-    FRONTEND_ROOT / "static",
-]
-
 STATIC_ROOT = BASE_DIR / "staticfiles"
-
+STATICFILES_DIRS = [
+    FRONTEND_ROOT / "frontend" / "static" / "frontend" / "assets",
+]
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-
 AUTH_USER_MODEL = "users.User"
-
 LOGIN_URL = "users:login"
 LOGIN_REDIRECT_URL = "catalog:index"
 LOGOUT_REDIRECT_URL = "catalog:index"
-
-
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-
+LANGUAGE_CODE = "ru-ru"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True
 
 CELERY_BROKER_URL = os.getenv(
-    "REDIS_URL",
-    "redis://127.0.0.1:6379/1",
+    "CELERY_BROKER_URL",
+    "redis://localhost:6379/0",
 )
-
-CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_RESULT_BACKEND = os.getenv(
+    "CELERY_RESULT_BACKEND",
+    "redis://localhost:6379/0",
+)
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "UTC"

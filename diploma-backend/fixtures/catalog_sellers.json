@@ -1,0 +1,18 @@
+[
+  {
+    "model": "catalog.seller",
+    "pk": 1,
+    "fields": {
+      "name": "Samsung",
+      "is_deleted": false
+    }
+  },
+  {
+    "model": "catalog.seller",
+    "pk": 2,
+    "fields": {
+      "name": "ASUS",
+      "is_deleted": false
+    }
+  }
+]

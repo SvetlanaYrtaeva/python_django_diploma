@@ -5,7 +5,8 @@ from django.utils.text import slugify
 
 class ActiveQuerySet(models.QuerySet):
     def active(self):
-        return self.filter(is_deleted=False)
+        # Возвращает только товары/категории, которые не удалены и активны
+        return self.filter(is_deleted=False, is_active=True)
 
 
 class Category(models.Model):
@@ -61,7 +62,6 @@ class Category(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
-
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -89,6 +89,41 @@ class Seller(models.Model):
         return self.name
 
 
+class Tag(models.Model):
+    name = models.CharField(
+        "название тега",
+        max_length=100,
+        unique=True,
+    )
+
+    slug = models.SlugField(
+        "ссылка",
+        max_length=120,
+        unique=True,
+        blank=True,
+    )
+
+    is_deleted = models.BooleanField(
+        "удалён",
+        default=False,
+    )
+
+    objects = ActiveQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "тег"
+        verbose_name_plural = "теги"
+        ordering = ("name",)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
 class Product(models.Model):
     category = models.ForeignKey(
         Category,
@@ -102,6 +137,13 @@ class Product(models.Model):
         on_delete=models.PROTECT,
         related_name="products",
         verbose_name="производитель",
+    )
+
+    tags = models.ManyToManyField(
+        Tag,
+        related_name="products",
+        blank=True,
+        verbose_name="теги",
     )
 
     name = models.CharField(
@@ -203,15 +245,15 @@ class Product(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
-
         super().save(*args, **kwargs)
 
     @property
     def reviews_count(self):
-        return self.reviews.filter(
-            is_deleted=False,
-        ).count()
 
+        try:
+            return self.reviews.filter(is_deleted=False).count()
+        except Exception:
+            return 0
 
     def __str__(self):
         return self.name

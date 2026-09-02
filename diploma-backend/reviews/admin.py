@@ -12,28 +12,17 @@ class ReviewAdmin(admin.ModelAdmin):
         "created_at",
         "is_deleted",
     )
+    list_filter = ("rating", "is_deleted", "created_at")
+    search_fields = ("text", "product__name", "user__email")
+    readonly_fields = ("created_at",)
 
-    list_filter = (
-        "rating",
-        "is_deleted",
-        "created_at",
-    )
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.filter(is_deleted=False)
 
-    search_fields = (
-        "product__name",
-        "user__username",
-        "user__email",
-        "text",
-    )
+    actions = ["soft_delete"]
 
-    actions = [
-        "soft_delete_reviews",
-    ]
-
-    @admin.action(
-        description="Мягко удалить отзывы",
-    )
-    def soft_delete_reviews(self, request, queryset):
-        queryset.update(
-            is_deleted=True,
-        )
+    @admin.action(description="Удалить (мягко)")
+    def soft_delete(self, request, queryset):
+        queryset.update(is_deleted=True)
+        self.message_user(request, "Выбранные отзывы помечены как удалённые.")
