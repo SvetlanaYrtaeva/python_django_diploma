@@ -92,10 +92,22 @@ def serialize_category(cat):
 
 @api_view(["GET"])
 def catalog_api_view(request: Request) -> Response:
+    from django.db.models import Count, Avg, Q
+
     products = (
         Product.objects.active()
         .select_related("category", "seller")
         .prefetch_related("tags")
+        .annotate(
+            reviews_count_annotated=Count(
+                "reviews",
+                filter=Q(reviews__is_deleted=False),
+            ),
+            avg_rating_annotated=Avg(
+                "reviews__rating",
+                filter=Q(reviews__is_deleted=False),
+            ),
+        )
     )
 
     category_id = request.query_params.get("category")
@@ -147,15 +159,14 @@ def catalog_api_view(request: Request) -> Response:
                     }
                 )
 
-
     sort = request.query_params.get("sort", "price")
     sort_type = request.query_params.get("sortType", "inc")
     prefix = "" if sort_type == "inc" else "-"
 
     sort_map = {
         "price": "price",
-        "reviews": "reviews_count",
-        "rating": "purchases_count",
+        "reviews": "reviews_count_annotated",
+        "rating": "avg_rating_annotated",
         "popular": "purchases_count",
         "date": "created_at",
         "novelty": "created_at",

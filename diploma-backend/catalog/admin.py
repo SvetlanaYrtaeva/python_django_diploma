@@ -58,6 +58,7 @@ class TagAdmin(SoftDeleteAdminMixin, admin.ModelAdmin):
 class ProductAdmin(SoftDeleteAdminMixin, admin.ModelAdmin):
     list_display = (
         "name",
+        "image",
         "price",
         "old_price",
         "category",

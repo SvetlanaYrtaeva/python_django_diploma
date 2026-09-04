@@ -5,7 +5,6 @@ from django.utils.text import slugify
 
 class ActiveQuerySet(models.QuerySet):
     def active(self):
-        # Возвращает только товары/категории, которые не удалены и активны
         return self.filter(is_deleted=False, is_active=True)
 
 
