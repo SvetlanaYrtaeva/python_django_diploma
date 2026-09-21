@@ -18,6 +18,8 @@ def get_cart(request):
     if not request.session.session_key:
         request.session.create()
 
+    request.session.modified = True
+
     cart, _ = Cart.objects.get_or_create(
         session_key=request.session.session_key,
     )

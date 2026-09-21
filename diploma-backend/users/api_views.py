@@ -2,6 +2,8 @@ import json
 
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import get_user_model
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -9,26 +11,32 @@ from rest_framework.response import Response
 User = get_user_model()
 
 
-def _extract_data(request):
+
+
+@csrf_exempt
+def sign_in_api_view(request):
+    if request.method != "POST":
+        return JsonResponse(
+            {"success": False, "error": "Метод не поддерживается"},
+            status=405,
+        )
+
+    data = {}
     try:
-        body = request.body.decode("utf-8")
-        if body:
-            parsed = json.loads(body)
-            if isinstance(parsed, dict):
-                return parsed
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        pass
-    return dict(request.data) if request.data else {}
+        raw = request.body
+        if raw:
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
+            data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+        if request.POST:
+            data = dict(request.POST)
 
-
-@api_view(["POST"])
-def sign_in_api_view(request: Request) -> Response:
-    data = _extract_data(request)
     login_field = data.get("username") or data.get("email") or data.get("login")
     password = data.get("password") or data.get("pass")
 
     if not login_field or not password:
-        return Response(
+        return JsonResponse(
             {"success": False, "error": "Укажите логин и пароль"},
             status=400,
         )
@@ -43,22 +51,40 @@ def sign_in_api_view(request: Request) -> Response:
     user = authenticate(request, username=username, password=password)
     if user:
         login(request, user)
-        return Response({"success": True})
-    return Response(
+        return JsonResponse({"success": True})
+    return JsonResponse(
         {"success": False, "error": "Неверный логин или пароль"},
         status=401,
     )
 
 
-@api_view(["POST"])
-def sign_up_api_view(request: Request) -> Response:
-    data = _extract_data(request)
+
+
+@csrf_exempt
+def sign_up_api_view(request):
+    if request.method != "POST":
+        return JsonResponse(
+            {"success": False, "error": "Метод не поддерживается"},
+            status=405,
+        )
+
+    data = {}
+    try:
+        raw = request.body
+        if raw:
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
+            data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+        if request.POST:
+            data = dict(request.POST)
+
     name = data.get("name", "")
     login_field = data.get("username") or data.get("email") or data.get("login")
     password = data.get("password") or data.get("pass")
 
     if not login_field or not password:
-        return Response(
+        return JsonResponse(
             {"success": False, "error": "Укажите логин и пароль"},
             status=400,
         )
@@ -70,9 +96,8 @@ def sign_up_api_view(request: Request) -> Response:
         email = f"{login_field}@example.com"
         username = login_field
 
-    # Проверяем уникальность
     if User.objects.filter(email=email).exists():
-        return Response(
+        return JsonResponse(
             {"success": False, "error": "Пользователь с таким email уже существует"},
             status=400,
         )
@@ -98,13 +123,22 @@ def sign_up_api_view(request: Request) -> Response:
         last_name=last_name,
     )
     login(request, user)
-    return Response({"success": True})
+    return JsonResponse({"success": True})
 
 
-@api_view(["POST"])
-def sign_out_api_view(request: Request) -> Response:
+
+
+@csrf_exempt
+def sign_out_api_view(request):
+    if request.method != "POST":
+        return JsonResponse(
+            {"success": False, "error": "Метод не поддерживается"},
+            status=405,
+        )
     logout(request)
-    return Response({"success": True})
+    return JsonResponse({"success": True})
+
+
 
 
 @api_view(["GET", "POST"])
@@ -115,7 +149,15 @@ def profile_api_view(request: Request) -> Response:
     user = request.user
 
     if request.method == "POST":
-        data = _extract_data(request)
+        data = request.data
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, ValueError):
+                data = {}
+        if not isinstance(data, dict):
+            data = {}
+
         if "first_name" in data or "name" in data:
             user.first_name = data.get("first_name") or data.get("name") or ""
         if "last_name" in data or "lastName" in data:
@@ -158,8 +200,13 @@ def profile_api_view(request: Request) -> Response:
         "last_name": user.last_name,
         "full_name": user.full_name,
         "phone": user.phone or "",
-        "avatar": user.avatar.url if user.avatar else "",
+        "avatar": {
+            "src": user.avatar.url if user.avatar else "",
+            "alt": user.email,
+        },
     })
+
+
 
 
 @api_view(["POST"])
@@ -183,5 +230,8 @@ def avatar_api_view(request: Request) -> Response:
 
     return Response({
         "success": True,
-        "avatar": user.avatar.url,
+        "avatar": {
+            "src": user.avatar.url,
+            "alt": user.email,
+        },
     })

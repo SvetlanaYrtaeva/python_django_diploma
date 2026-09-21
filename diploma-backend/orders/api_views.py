@@ -1,6 +1,10 @@
+import json
+
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import transaction
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -8,8 +12,23 @@ from rest_framework.response import Response
 
 from cart.models import Cart
 from .models import Order, OrderItem
+from .services import calculate_delivery, fake_payment_service
 
 User = get_user_model()
+
+
+def _extract_data(request):
+    data = request.data
+    if isinstance(data, dict):
+        return data
+    if isinstance(data, str):
+        try:
+            parsed = json.loads(data)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return {}
 
 
 @api_view(["POST"])
@@ -26,23 +45,75 @@ def create_order_api_view(request: Request) -> Response:
     if not items.exists():
         return Response({"error": "Корзина пуста"}, status=400)
 
+    data = _extract_data(request)
+
+    full_name = (
+        data.get("fullName")
+        or data.get("full_name")
+        or data.get("name")
+        or request.user.full_name
+        or f"{request.user.first_name} {request.user.last_name}".strip()
+        or request.user.username
+    )
+
+    email = data.get("email") or request.user.email
+    if not email:
+        return Response({"error": "Укажите email"}, status=400)
+    try:
+        validate_email(email)
+    except ValidationError:
+        return Response({"error": "Некорректный email"}, status=400)
+
+    phone = (
+        data.get("phone")
+        or data.get("tel")
+        or request.user.phone
+        or ""
+    )
+
+    city = data.get("city") or data.get("cityName") or ""
+    address = (
+        data.get("address")
+        or data.get("street")
+        or data.get("deliveryAddress")
+        or ""
+    )
+
+    delivery_type = (
+        data.get("deliveryType")
+        or data.get("delivery_type")
+        or Order.DeliveryType.STANDARD
+    )
+    payment_type = (
+        data.get("paymentType")
+        or data.get("payment_type")
+        or Order.PaymentType.CARD
+    )
+
     products_total = sum(
         (item.total for item in items), Decimal("0.00")
     )
 
+    try:
+        delivery_total = calculate_delivery(products_total, delivery_type)
+    except Exception:
+        delivery_total = Decimal("0.00")
+
+    total = products_total + delivery_total
+
     with transaction.atomic():
         order = Order.objects.create(
             user=request.user,
-            full_name=request.user.full_name,
-            email=request.user.email,
-            phone=request.user.phone or "",
-            city="",
-            address="",
-            delivery_type=Order.DeliveryType.STANDARD,
-            payment_type=Order.PaymentType.CARD,
+            full_name=full_name,
+            email=email,
+            phone=phone,
+            city=city,
+            address=address,
+            delivery_type=delivery_type,
+            payment_type=payment_type,
             products_total=products_total,
-            delivery_total=Decimal("0.00"),
-            total=products_total,
+            delivery_total=delivery_total,
+            total=total,
             payment_status=Order.PaymentStatus.WAITING,
         )
 
@@ -68,7 +139,9 @@ def order_detail_api_view(request: Request, order_id: int) -> Response:
         return Response({"error": "Требуется авторизация"}, status=401)
 
     try:
-        order = request.user.orders.prefetch_related("items").get(pk=order_id, is_deleted=False)
+        order = request.user.orders.prefetch_related("items").get(
+            pk=order_id, is_deleted=False
+        )
     except Order.DoesNotExist:
         return Response({"error": "Заказ не найден"}, status=404)
 
@@ -113,44 +186,48 @@ def payment_api_view(request: Request, order_id: int) -> Response:
     except Order.DoesNotExist:
         return Response({"error": "Заказ не найден"}, status=404)
 
-    data = dict(request.data) if request.data else {}
+    data = _extract_data(request)
 
     number = (
-        data.get("number")
-        or data.get("number1")
+        data.get("number1")
+        or data.get("number")
         or data.get("card")
         or data.get("account")
         or ""
     )
 
     if not number:
-        return Response({"error": "Введите номер"}, status=400)
+        return Response({"error": "Введите номер карты"}, status=400)
 
-    number = str(number).strip()
+    number = str(number).replace(" ", "").replace("-", "")
 
     if not number.isdigit():
-        return Response({"error": "Номер должен содержать только цифры"}, status=400)
+        return Response(
+            {"error": "Номер должен содержать только цифры"},
+            status=400,
+        )
+
     if len(number) > 8:
-        return Response({"error": "Номер не должен быть длиннее 8 цифр"}, status=400)
+        number = number[-8:]
 
     order.payment_status = Order.PaymentStatus.PROCESSING
     order.payment_error = ""
     order.payment_number = number
-    order.save(update_fields=["payment_status", "payment_error", "payment_number", "updated_at"])
+    order.save(update_fields=[
+        "payment_status", "payment_error",
+        "payment_number", "updated_at",
+    ])
 
-    try:
-        from .tasks import process_payment
-        process_payment.delay(order.id, number)
-    except Exception:
-        from .services import fake_payment_service
-        success, error = fake_payment_service(number)
-        if success:
-            order.payment_status = Order.PaymentStatus.PAID
-            order.payment_error = ""
-        else:
-            order.payment_status = Order.PaymentStatus.ERROR
-            order.payment_error = error
-        order.save(update_fields=["payment_status", "payment_error", "updated_at"])
+    success, error = fake_payment_service(number)
+    if success:
+        order.payment_status = Order.PaymentStatus.PAID
+        order.payment_error = ""
+    else:
+        order.payment_status = Order.PaymentStatus.ERROR
+        order.payment_error = error
+    order.save(update_fields=[
+        "payment_status", "payment_error", "updated_at",
+    ])
 
     return Response({
         "success": True,

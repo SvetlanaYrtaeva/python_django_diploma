@@ -3,6 +3,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import TemplateView
+from reviews.views import review_api_view
 
 from cart.views import basket_api_view
 from catalog.api_views import (
@@ -12,6 +13,7 @@ from catalog.api_views import (
     limited_products_api_view,
     popular_products_api_view,
     product_detail_api_view,
+    sales_api_view,
     tags_api_view,
 )
 from catalog import views as catalog_views
@@ -41,35 +43,46 @@ api_urls = [
     ("api/sign-up", sign_up_api_view),
     ("api/profile", profile_api_view),
     ("api/avatar", avatar_api_view),
+    ("api/profile/avatar", avatar_api_view),
+    ("api/profile/avatar/", avatar_api_view),
+
     ("api/catalog", catalog_api_view),
     ("api/categories", categories_api_view),
     ("api/tags", tags_api_view),
     ("api/products/popular", popular_products_api_view),
     ("api/products/limited", limited_products_api_view),
     ("api/banners", banners_api_view),
+    ("api/sales", sales_api_view),
+
     ("api/generate-account", generate_account_api_view),
     ("api/orders", create_order_api_view),
 ]
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("", TemplateView.as_view(template_name="frontend/index.html"), name="index"),
+
+    path("", catalog_views.index_view, name="index"),
+
     path("catalog/", include("catalog.urls")),
     path("product/<int:pk>/", catalog_views.product_by_id_view, name="product_by_id"),
+
     path("users/", include("users.urls")),
     path("profile/", user_views.profile_view, name="profile_page"),
+
     path("signIn/", TemplateView.as_view(template_name="frontend/signIn.html"), name="sign_in_page"),
     path("signUp/", TemplateView.as_view(template_name="frontend/signUp.html"), name="sign_up_page"),
     path("sign-in/", TemplateView.as_view(template_name="frontend/signIn.html"), name="sign_in_alt"),
     path("sign-up/", TemplateView.as_view(template_name="frontend/signUp.html"), name="sign_up_alt"),
+
     path("cart/", TemplateView.as_view(template_name="frontend/cart.html"), name="cart_page"),
     path("cart/", include("cart.urls")),
     path("orders/", include("orders.urls")),
+
     path("reviews/", include("reviews.urls")),
+
     path("sale/", TemplateView.as_view(template_name="frontend/sale.html"), name="sale"),
 
     path("history-order/", order_history_view, name="history_order_alt"),
-
     path("payment/<int:order_id>/", payment_view, name="payment_alt"),
 ]
 
@@ -80,7 +93,6 @@ for prefix, view in api_urls:
 urlpatterns.append(path("api/product/<int:product_id>", product_detail_api_view))
 urlpatterns.append(path("api/product/<int:product_id>/", product_detail_api_view))
 
-from reviews.views import review_api_view
 urlpatterns.append(path("api/product/<int:product_id>/reviews", review_api_view, name="api_product_reviews_alt"))
 urlpatterns.append(path("api/product/<int:product_id>/reviews/", review_api_view))
 

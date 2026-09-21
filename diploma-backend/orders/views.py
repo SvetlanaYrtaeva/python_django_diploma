@@ -16,8 +16,12 @@ from .forms import (
     PaymentMethodForm,
 )
 from .models import Order, OrderItem
-from .services import calculate_delivery, generate_random_account, validate_payment_number
-from .tasks import process_payment
+from .services import (
+    calculate_delivery,
+    fake_payment_service,
+    generate_random_account,
+    validate_payment_number,
+)
 
 User = get_user_model()
 
@@ -209,7 +213,15 @@ def payment_view(request, order_id):
             return redirect("catalog:index")
 
     if request.method == "POST":
-        form = PaymentForm(request.POST)
+        post_data = request.POST.copy()
+
+        if "number1" in post_data and "number" not in post_data:
+            raw_number = post_data["number1"].replace(" ", "").replace("-", "")
+            if raw_number.isdigit() and len(raw_number) > 8:
+                raw_number = raw_number[-8:]
+            post_data["number"] = raw_number
+
+        form = PaymentForm(post_data)
 
         if form.is_valid():
             number = form.cleaned_data["number"]
@@ -231,7 +243,16 @@ def payment_view(request, order_id):
                 "payment_number", "updated_at",
             ])
 
-            process_payment.delay(order.id, number)
+            success, error_msg = fake_payment_service(number)
+            if success:
+                order.payment_status = Order.PaymentStatus.PAID
+                order.payment_error = ""
+            else:
+                order.payment_status = Order.PaymentStatus.ERROR
+                order.payment_error = error_msg
+            order.save(update_fields=[
+                "payment_status", "payment_error", "updated_at",
+            ])
 
             messages.info(
                 request,

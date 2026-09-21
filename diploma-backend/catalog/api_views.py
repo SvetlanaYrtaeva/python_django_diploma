@@ -174,7 +174,6 @@ def catalog_api_view(request: Request) -> Response:
     sort_field = sort_map.get(sort, "price")
     products = products.order_by(f"{prefix}{sort_field}")
 
-    # ── Пагинация ──
     try:
         page = int(request.query_params.get("currentPage", 1))
     except (TypeError, ValueError):
@@ -194,8 +193,6 @@ def catalog_api_view(request: Request) -> Response:
 
     return Response({
         "items": items,
-        "results": items,
-        "products": items,
         "count": limit,
         "total": total,
         "currentPage": page,
@@ -241,9 +238,7 @@ def popular_products_api_view(request: Request) -> Response:
         .select_related("category", "seller")
         .order_by("sorting_index", "-purchases_count")[:8]
     )
-    return Response(
-        {"products": [serialize_product(p) for p in products]}
-    )
+    return Response([serialize_product(p) for p in products])
 
 
 @api_view(["GET"])
@@ -253,9 +248,7 @@ def limited_products_api_view(request: Request) -> Response:
         .select_related("category", "seller")
         .filter(limited_edition=True)[:16]
     )
-    return Response(
-        {"products": [serialize_product(p) for p in products]}
-    )
+    return Response([serialize_product(p) for p in products])
 
 
 @api_view(["GET"])
@@ -264,16 +257,63 @@ def banners_api_view(request: Request) -> Response:
         Category.objects.active()
         .filter(is_featured=True, is_active=True)[:3]
     )
+    result = []
+    for cat in featured:
+        min_price_product = (
+            Product.objects.active()
+            .filter(category=cat)
+            .order_by("price")
+            .first()
+        )
+        price = str(min_price_product.price) if min_price_product else "0"
+
+        images = []
+        if cat.icon:
+            images.append({"src": cat.icon.url, "alt": cat.name})
+
+        result.append({
+            "title": cat.name,
+            "category": cat.id,
+            "price": price,
+            "images": images,
+        })
+    return Response(result)
+
+
+@api_view(["GET"])
+def sales_api_view(request: Request) -> Response:
+    """
+    Возвращает товары со скидкой (у которых задан old_price).
+    Поддерживает пагинацию через currentPage и limit.
+    """
+    try:
+        page = int(request.query_params.get("currentPage", 1))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        limit = int(request.query_params.get("limit", 20))
+    except (TypeError, ValueError):
+        limit = 20
+
+    products = (
+        Product.objects.active()
+        .select_related("category", "seller")
+        .filter(old_price__isnull=False)
+        .order_by("-purchases_count")
+    )
+
+    total = products.count()
+    last_page = (total + limit - 1) // limit if limit > 0 else 1
+
+    start = (page - 1) * limit
+    end = start + limit
+
+    items = [serialize_product(p) for p in products[start:end]]
+
     return Response({
-        "banners": [
-            {
-                "title": cat.name,
-                "image": {
-                    "src": cat.icon.url if cat.icon else "",
-                    "alt": cat.name,
-                },
-                "url": f"/catalog/{cat.id}/",
-            }
-            for cat in featured
-        ]
+        "items": items,
+        "count": limit,
+        "total": total,
+        "currentPage": page,
+        "lastPage": last_page,
     })
