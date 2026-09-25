@@ -1,42 +1,22 @@
 from rest_framework import serializers
 from .models import Category
 
-
-class SubCategorySerializer(serializers.ModelSerializer):
-    image = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Category
-        fields = ['id', 'title', 'image']
-
-    def get_image(self, obj):
-        if obj.image:
-            return {
-                "src": obj.image.url,
-                "alt": obj.title
-            }
-        return {"src": "", "alt": ""}
-
-
 class CategorySerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
-
     subcategories = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
-        fields = ['id', 'title', 'image', 'subcategories']
+        fields = ['id', 'name', 'image', 'subcategories']
 
     def get_image(self, obj):
-        if obj.image:
+        if obj.icon:
             return {
-                "src": obj.image.url,
-                "alt": obj.title
+                "src": obj.icon.url,
+                "alt": obj.name
             }
         return {"src": "", "alt": ""}
 
     def get_subcategories(self, obj):
-
-        subs = obj.subcategories.all() if hasattr(obj, 'subcategories') else Category.objects.filter(parent=obj)
-
-        return SubCategorySerializer(subs, many=True).data
+        children = Category.objects.filter(parent=obj, is_deleted=False, is_active=True)
+        return CategorySerializer(children, many=True).data

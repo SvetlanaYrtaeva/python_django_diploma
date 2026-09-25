@@ -9,6 +9,17 @@ def _placeholder_url():
     return "/static/frontend/assets/img/logo.png"
 
 
+def _category_icon_url(category):
+    """
+    Возвращает URL иконки категории.
+    Если иконка не загружена — отдаёт запасную картинку,
+    чтобы фронтенд всегда получал валидный src.
+    """
+    if category.icon:
+        return category.icon.url
+    return "/static/frontend/assets/img/icons/allDep.svg"
+
+
 def serialize_product(product):
     image_url = product.image.url if product.image else _placeholder_url()
     return {
@@ -78,7 +89,7 @@ def serialize_category(cat):
         "slug": cat.slug,
         "url": f"/catalog/{cat.id}/",
         "image": {
-            "src": cat.icon.url if cat.icon else "",
+            "src": _category_icon_url(cat),
             "alt": cat.name,
         },
         "subcategories": [
@@ -267,9 +278,12 @@ def banners_api_view(request: Request) -> Response:
         )
         price = str(min_price_product.price) if min_price_product else "0"
 
-        images = []
-        if cat.icon:
-            images.append({"src": cat.icon.url, "alt": cat.name})
+        images = [
+            {
+                "src": _category_icon_url(cat),
+                "alt": cat.name,
+            }
+        ]
 
         result.append({
             "title": cat.name,

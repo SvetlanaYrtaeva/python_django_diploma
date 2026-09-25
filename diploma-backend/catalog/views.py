@@ -1,4 +1,4 @@
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, render
 from .models import Category, Product
 
 from catalog.api_views import (
@@ -62,7 +62,7 @@ def index_view(request):
     """
     Главная страница.
     Получает данные из API-функций и передаёт в шаблон.
-    Фронтенд (Vue) также может запрашивать данные через AJAX- endpoints.
+    Фронтенд (Vue) также может запрашивать данные через AJAX-эндпоинты.
     """
     banners_response = banners_api_view(request)
     banners_data = banners_response.data if hasattr(banners_response, "data") else []

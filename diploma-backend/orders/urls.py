@@ -1,6 +1,5 @@
 from django.urls import path
 from . import api_views
-
 from .views import (
     checkout_confirm_view,
     checkout_customer_view,
@@ -22,5 +21,6 @@ urlpatterns = [
     path("payment/<int:order_id>/", payment_view, name="payment"),
     path("history/", order_history_view, name="history"),
     path("<int:order_id>/", order_detail_view, name="detail"),
-    path('api/orders/', api_views.create_order_api_view, name='api_orders'),
+    path("api/orders/", api_views.create_order_api_view, name="api_orders"),
+    path("history-order/", order_history_view, name="history_order_alt"),
 ]
