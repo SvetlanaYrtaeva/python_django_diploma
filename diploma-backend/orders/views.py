@@ -28,14 +28,12 @@ User = get_user_model()
 
 def checkout_customer_view(request):
     cart = get_cart(request)
-
     if not cart.items.exists():
         messages.warning(request, "Корзина пуста.")
         return redirect("cart:detail")
 
     if request.method == "POST":
         form = CustomerDataForm(request.POST)
-
         if form.is_valid():
             request.session["checkout_customer"] = form.cleaned_data
             return redirect("orders:delivery")
@@ -43,17 +41,13 @@ def checkout_customer_view(request):
         initial = {}
         if request.user.is_authenticated:
             initial = {
-                "full_name": request.user.full_name,
-                "email": request.user.email,
-                "phone": request.user.phone or "",
+                "full_name": getattr(request.user, "full_name", "") or "",
+                "email": request.user.email or "",
+                "phone": getattr(request.user, "phone", "") or "",
             }
         form = CustomerDataForm(initial=initial)
 
-    return render(
-        request,
-        "frontend/order.html",
-        {"form": form, "step": "customer"},
-    )
+    return render(request, "frontend/order.html", {"form": form, "step": "customer"})
 
 
 def checkout_delivery_view(request):
@@ -63,46 +57,33 @@ def checkout_delivery_view(request):
 
     if request.method == "POST":
         form = DeliveryForm(request.POST)
-
         if form.is_valid():
             request.session["checkout_delivery"] = form.cleaned_data
             return redirect("orders:payment_method")
     else:
         form = DeliveryForm(initial={"delivery_type": "standard"})
 
-    return render(
-        request,
-        "frontend/order.html",
-        {"form": form, "step": "delivery"},
-    )
+    return render(request, "frontend/order.html", {"form": form, "step": "delivery"})
 
 
 def checkout_payment_method_view(request):
     customer = request.session.get("checkout_customer")
     delivery = request.session.get("checkout_delivery")
-
     if not customer or not delivery:
         return redirect("orders:customer")
 
     if request.method == "POST":
         form = PaymentMethodForm(request.POST)
-
         if form.is_valid():
             request.session["checkout_payment"] = form.cleaned_data
             return redirect("orders:confirm")
     else:
         form = PaymentMethodForm()
 
-    return render(
-        request,
-        "frontend/order.html",
-        {"form": form, "step": "payment_method"},
-    )
+    return render(request, "frontend/order.html", {"form": form, "step": "payment_method"})
 
 
 def checkout_confirm_view(request):
-    cart = get_cart(request)
-
     customer = request.session.get("checkout_customer")
     delivery = request.session.get("checkout_delivery")
     payment = request.session.get("checkout_payment")
@@ -110,19 +91,15 @@ def checkout_confirm_view(request):
     if not customer or not delivery or not payment:
         return redirect("orders:customer")
 
+    cart = get_cart(request)
     items = list(cart.items.select_related("product"))
 
     if not items:
         messages.warning(request, "Корзина пуста.")
         return redirect("cart:detail")
 
-    products_total = sum(
-        (item.total for item in items), Decimal("0.00")
-    )
-
-    delivery_total = calculate_delivery(
-        products_total, delivery["delivery_type"]
-    )
+    products_total = sum((item.total for item in items), Decimal("0.00"))
+    delivery_total = calculate_delivery(products_total, delivery["delivery_type"])
     total = products_total + delivery_total
 
     if request.method == "POST":
@@ -131,12 +108,8 @@ def checkout_confirm_view(request):
 
             if user is None and customer.get("password1"):
                 email = customer["email"].lower()
-
                 if User.objects.filter(email=email).exists():
-                    messages.error(
-                        request,
-                        "Пользователь с указанным email уже существует.",
-                    )
+                    messages.error(request, "Пользователь с указанным email уже существует.")
                     return redirect("orders:customer")
 
                 username = email.split("@")[0]
@@ -182,24 +155,21 @@ def checkout_confirm_view(request):
 
             cart.items.all().delete()
 
-        request.session["checkout_order_id"] = order.id
+        for key in ("checkout_customer", "checkout_delivery", "checkout_payment"):
+            request.session.pop(key, None)
 
-        return redirect("orders:payment", order_id=order.id)
+        return redirect("orders:detail", order_id=order.id)
 
-    return render(
-        request,
-        "frontend/order.html",
-        {
-            "items": items,
-            "customer": customer,
-            "delivery": delivery,
-            "payment": payment,
-            "products_total": products_total,
-            "delivery_total": delivery_total,
-            "total": total,
-            "step": "confirm",
-        },
-    )
+    return render(request, "frontend/order.html", {
+        "items": items,
+        "customer": customer,
+        "delivery": delivery,
+        "payment": payment,
+        "products_total": products_total,
+        "delivery_total": delivery_total,
+        "total": total,
+        "step": "confirm",
+    })
 
 
 def payment_view(request, order_id):
@@ -229,19 +199,12 @@ def payment_view(request, order_id):
             ok, error = validate_payment_number(number)
             if not ok:
                 form.add_error("number", error)
-                return render(
-                    request,
-                    "frontend/payment.html",
-                    {"order": order, "form": form},
-                )
+                return render(request, "frontend/payment.html", {"order": order, "form": form})
 
             order.payment_status = Order.PaymentStatus.PROCESSING
             order.payment_error = ""
             order.payment_number = number
-            order.save(update_fields=[
-                "payment_status", "payment_error",
-                "payment_number", "updated_at",
-            ])
+            order.save(update_fields=["payment_status", "payment_error", "payment_number", "updated_at"])
 
             success, error_msg = fake_payment_service(number)
             if success:
@@ -250,40 +213,26 @@ def payment_view(request, order_id):
             else:
                 order.payment_status = Order.PaymentStatus.ERROR
                 order.payment_error = error_msg
-            order.save(update_fields=[
-                "payment_status", "payment_error", "updated_at",
-            ])
+            order.save(update_fields=["payment_status", "payment_error", "updated_at"])
 
-            messages.info(
-                request,
-                "Ждём подтверждения оплаты от платёжной системы.",
-            )
+            messages.info(request, "Ждём подтверждения оплаты от платёжной системы.")
             return redirect("orders:detail", order_id=order.id)
     else:
         form = PaymentForm()
 
-    return render(
-        request,
-        "frontend/payment.html",
-        {"order": order, "form": form},
-    )
+    return render(request, "frontend/payment.html", {"order": order, "form": form})
 
 
 def generate_account_api_view(request):
     if request.method != "GET":
         return JsonResponse({"detail": "Метод не поддерживается."}, status=405)
-
     return JsonResponse({"number": generate_random_account()})
 
 
 @login_required
 def order_history_view(request):
     orders = request.user.orders.filter(is_deleted=False)
-    return render(
-        request,
-        "frontend/historyorder.html",
-        {"orders": orders},
-    )
+    return render(request, "frontend/historyorder.html", {"orders": orders})
 
 
 @login_required
@@ -292,8 +241,56 @@ def order_detail_view(request, order_id):
         request.user.orders.filter(is_deleted=False).prefetch_related("items"),
         pk=order_id,
     )
-    return render(
-        request,
-        "frontend/oneorder.html",
-        {"order": order},
+
+
+    if not order.city and not order.address:
+        return render(request, "frontend/order.html", {"order": order})
+
+    return render(request, "frontend/oneorder.html", {"order": order})
+
+
+@login_required
+def order_detail_api(request, order_id):
+    order = get_object_or_404(
+        request.user.orders.filter(is_deleted=False).prefetch_related("items__product"),
+        pk=order_id,
     )
+
+    products_data = []
+    for item in order.items.all():
+        product = item.product
+        img_src = ""
+        img_alt = getattr(product, "title", product.name)
+
+        if hasattr(product, "image") and product.image:
+            img_src = product.image.url
+        elif hasattr(product, "images") and product.images.exists():
+            img_src = product.images.first().image.url
+
+        products_data.append({
+            "id": product.id,
+            "title": getattr(product, "title", product.name),
+            "shortDescription": (product.description[:100] if product.description else ""),
+            "description": (product.description or ""),
+            "price": str(product.price),
+            "count": item.quantity,
+            "images": [{"src": img_src, "alt": img_alt}] if img_src else []
+        })
+
+    data = {
+        "orderId": order.id,
+        "fullName": order.full_name,
+        "email": order.email,
+        "phone": order.phone,
+        "city": order.city,
+        "address": order.address,
+        "deliveryType": order.delivery_type,
+        "paymentType": order.payment_type,
+        "status": order.get_payment_status_display(),
+        "createdAt": order.created_at.isoformat(),
+        "totalCost": str(order.total),
+        "products": products_data,
+        "paymentError": order.payment_error or None
+    }
+
+    return JsonResponse(data)

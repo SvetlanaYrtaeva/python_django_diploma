@@ -3,6 +3,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import TemplateView
+
 from reviews.views import review_api_view
 
 from cart.views import basket_api_view
@@ -17,16 +18,20 @@ from catalog.api_views import (
     tags_api_view,
 )
 from catalog import views as catalog_views
+
 from orders.api_views import (
+    cancel_order_api_view,
     create_order_api_view,
     order_detail_api_view,
     payment_api_view,
 )
+
 from orders.views import (
     generate_account_api_view,
     order_history_view,
     payment_view,
 )
+
 from users import views as user_views
 from users.api_views import (
     avatar_api_view,
@@ -79,6 +84,8 @@ urlpatterns = [
 for prefix, view in api_urls:
     urlpatterns.append(path(f"{prefix}", view))
     urlpatterns.append(path(f"{prefix}/", view))
+
+urlpatterns.append(path("api/orders/<int:order_id>/cancel/", cancel_order_api_view))
 
 urlpatterns.append(path("api/product/<int:product_id>", product_detail_api_view))
 urlpatterns.append(path("api/product/<int:product_id>/", product_detail_api_view))

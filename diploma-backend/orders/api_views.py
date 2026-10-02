@@ -15,12 +15,19 @@ from .models import Order, OrderItem
 from .services import calculate_delivery, fake_payment_service
 
 
+DELIVERY_TYPE_MAP = {
+    "ordinary": Order.DeliveryType.STANDARD,
+    "standard": Order.DeliveryType.STANDARD,
+    "express": Order.DeliveryType.EXPRESS,
+}
+PAYMENT_TYPE_MAP = {
+    "online": Order.PaymentType.CARD,
+    "card": Order.PaymentType.CARD,
+    "someone": Order.PaymentType.SOMEONE,
+}
+
+
 def _product_image_url(product):
-    """
-    Возвращает URL картинки товара.
-    Если картинки нет — возвращает путь к заглушке.
-    Это критически важно, чтобы фронтенд не падал на product.images
-    """
     if product and product.image:
         return product.image.url
     return "/static/frontend/assets/img/logo.png"
@@ -88,12 +95,7 @@ def _collect_order_items(request, data):
 
 
 def serialize_order_item(item):
-    """
-    Сериализует позицию заказа.
-    ВАЖНО: Здесь мы добавляем поле 'images', которое ждет фронтенд.
-    """
-    product = item.product if hasattr(item, 'product') else None
-
+    product = item.product if hasattr(item, "product") else None
     image_url = _product_image_url(product)
 
     return {
@@ -112,9 +114,6 @@ def serialize_order_item(item):
 
 
 def serialize_order(order):
-    """
-    Сериализует весь заказ.
-    """
     return {
         "id": order.id,
         "orderId": order.id,
@@ -132,7 +131,6 @@ def serialize_order(order):
         "totalCost": str(order.total),
         "productsTotal": str(order.products_total),
         "deliveryTotal": str(order.delivery_total),
-        # Товары теперь приходят с готовыми картинками
         "products": [
             serialize_order_item(item) for item in order.items.all()
         ],
@@ -143,7 +141,7 @@ def serialize_order(order):
 def create_order_api_view(request: Request) -> Response:
     """
     GET  — история заказов текущего пользователя.
-    POST — создание заказа.
+    POST — создание заказа (из корзины, с минимальными данными).
     """
     if not request.user.is_authenticated:
         return Response({"error": "Требуется авторизация"}, status=401)
@@ -164,45 +162,34 @@ def create_order_api_view(request: Request) -> Response:
 
     user = request.user
 
-    full_name = (
-            data.get("fullName")
-            or data.get("full_name")
-            or user.full_name
-            or f"{user.first_name} {user.last_name}".strip()
-            or user.username
-    )
-
-    email = data.get("email") or user.email
-    if not email:
-        return Response({"error": "Укажите email"}, status=400)
-    try:
-        validate_email(email)
-    except ValidationError:
-        return Response({"error": "Некорректный email"}, status=400)
-
-    phone = data.get("phone") or data.get("tel") or user.phone or ""
-    city = data.get("city") or data.get("cityName") or ""
-    address = (
-            data.get("address")
-            or data.get("street")
-            or data.get("deliveryAddress")
-            or ""
-    )
-
-    delivery_type = (
-            data.get("deliveryType")
-            or data.get("delivery_type")
-            or Order.DeliveryType.STANDARD
-    )
-    payment_type = (
-            data.get("paymentType")
-            or data.get("payment_type")
-            or Order.PaymentType.CARD
-    )
+    for product, quantity in items:
+        if not product.is_active or product.is_deleted:
+            return Response(
+                {"error": f"Товар '{product.name}' больше недоступен для заказа"},
+                status=400,
+            )
 
     products_total = sum(
         (product.price * quantity for product, quantity in items),
         Decimal("0.00"),
+    )
+
+    delivery_type_raw = (
+        data.get("deliveryType")
+        or data.get("delivery_type")
+        or "ordinary"
+    )
+    delivery_type = DELIVERY_TYPE_MAP.get(
+        delivery_type_raw, Order.DeliveryType.STANDARD
+    )
+
+    payment_type_raw = (
+        data.get("paymentType")
+        or data.get("payment_type")
+        or "online"
+    )
+    payment_type = PAYMENT_TYPE_MAP.get(
+        payment_type_raw, Order.PaymentType.CARD
     )
 
     try:
@@ -211,6 +198,23 @@ def create_order_api_view(request: Request) -> Response:
         delivery_total = Decimal("0.00")
 
     total = products_total + delivery_total
+
+    full_name = (
+        data.get("fullName")
+        or data.get("full_name")
+        or getattr(user, "full_name", "")
+        or f"{user.first_name} {user.last_name}".strip()
+        or user.username
+    )
+    email = data.get("email") or user.email or ""
+    phone = data.get("phone") or data.get("tel") or getattr(user, "phone", "") or ""
+    city = data.get("city") or data.get("cityName") or ""
+    address = (
+        data.get("address")
+        or data.get("street")
+        or data.get("deliveryAddress")
+        or ""
+    )
 
     with transaction.atomic():
         order = Order.objects.create(
@@ -239,20 +243,14 @@ def create_order_api_view(request: Request) -> Response:
             for product, quantity in items
         ])
 
-        try:
-            user.cart.items.all().delete()
-        except Cart.DoesNotExist:
-            pass
+    request.session["checkout_order_id"] = order.id
 
     return Response({"orderId": order.id})
 
 
 @api_view(["GET", "POST"])
 def order_detail_api_view(request: Request, order_id: int) -> Response:
-    """
-    GET  — детали заказа.
-    POST — подтверждение заказа.
-    """
+
     if not request.user.is_authenticated:
         return Response({"error": "Требуется авторизация"}, status=401)
 
@@ -271,10 +269,56 @@ def order_detail_api_view(request: Request, order_id: int) -> Response:
     except Order.DoesNotExist:
         return Response({"error": "Заказ не найден"}, status=404)
 
-    if request.method == "POST":
-        return Response({"orderId": order.id})
+    if request.method == "GET":
+        return Response(serialize_order(order))
 
-    return Response(serialize_order(order))
+    data = _extract_data(request)
+
+    if data.get("fullName") or data.get("full_name"):
+        order.full_name = (
+            data.get("fullName") or data.get("full_name")
+        )
+    if data.get("phone") or data.get("tel"):
+        order.phone = data.get("phone") or data.get("tel")
+    if data.get("email"):
+        email = data.get("email")
+        try:
+            validate_email(email)
+        except ValidationError:
+            return Response({"error": "Некорректный email"}, status=400)
+        order.email = email
+
+    if data.get("deliveryType") or data.get("delivery_type"):
+        raw_delivery = data.get("deliveryType") or data.get("delivery_type")
+        order.delivery_type = DELIVERY_TYPE_MAP.get(
+            raw_delivery, Order.DeliveryType.STANDARD
+        )
+    if data.get("city") or data.get("cityName"):
+        order.city = data.get("city") or data.get("cityName")
+    if data.get("address") or data.get("street") or data.get("deliveryAddress"):
+        order.address = (
+            data.get("address")
+            or data.get("street")
+            or data.get("deliveryAddress")
+        )
+
+    if data.get("paymentType") or data.get("payment_type"):
+        raw_payment = data.get("paymentType") or data.get("payment_type")
+        order.payment_type = PAYMENT_TYPE_MAP.get(
+            raw_payment, Order.PaymentType.CARD
+        )
+
+    try:
+        order.delivery_total = calculate_delivery(
+            order.products_total, order.delivery_type
+        )
+    except Exception:
+        order.delivery_total = Decimal("0.00")
+
+    order.total = order.products_total + order.delivery_total
+    order.save()
+
+    return Response({"orderId": order.id})
 
 
 @api_view(["POST"])
@@ -290,11 +334,11 @@ def payment_api_view(request: Request, order_id: int) -> Response:
     data = _extract_data(request)
 
     number = (
-            data.get("number1")
-            or data.get("number")
-            or data.get("card")
-            or data.get("account")
-            or ""
+        data.get("number1")
+        or data.get("number")
+        or data.get("card")
+        or data.get("account")
+        or ""
     )
 
     if not number:
@@ -335,3 +379,34 @@ def payment_api_view(request: Request, order_id: int) -> Response:
         "orderId": order.id,
         "status": order.payment_status,
     })
+
+
+@api_view(["POST"])
+def cancel_order_api_view(request: Request, order_id: int) -> Response:
+    if not request.user.is_authenticated:
+        return Response({"error": "Требуется авторизация"}, status=401)
+
+    try:
+        order = request.user.orders.filter(
+            pk=order_id,
+            is_deleted=False,
+            payment_status=Order.PaymentStatus.WAITING,
+        ).first()
+
+        if not order:
+            return Response(
+                {"error": "Заказ не найден или уже нельзя отменить"},
+                status=404,
+            )
+
+        order.payment_status = Order.PaymentStatus.CANCELED
+        order.save(update_fields=["payment_status", "updated_at"])
+
+        return Response({
+            "success": True,
+            "message": "Заказ успешно отменён",
+            "orderId": order.id,
+        }, status=200)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)

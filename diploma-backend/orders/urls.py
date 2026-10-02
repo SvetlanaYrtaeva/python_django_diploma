@@ -7,6 +7,7 @@ from .views import (
     checkout_payment_method_view,
     generate_account_api_view,
     order_detail_view,
+    order_detail_api,
     order_history_view,
     payment_view,
 )
@@ -21,6 +22,7 @@ urlpatterns = [
     path("payment/<int:order_id>/", payment_view, name="payment"),
     path("history/", order_history_view, name="history"),
     path("<int:order_id>/", order_detail_view, name="detail"),
+    path("api/order/<int:order_id>/", order_detail_api, name="detail_api"),
     path("api/orders/", api_views.create_order_api_view, name="api_orders"),
     path("history-order/", order_history_view, name="history_order_alt"),
 ]

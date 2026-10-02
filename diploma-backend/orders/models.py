@@ -51,6 +51,7 @@ class Order(models.Model):
         PROCESSING = "processing", "Обрабатывается"
         PAID = "paid", "Оплачен"
         ERROR = "error", "Ошибка оплаты"
+        CANCELED = "canceled", "Отменён"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
